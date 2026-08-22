@@ -1,0 +1,47 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout origin
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync main with upstream and re-apply this workflow
+        run: |
+          git remote add upstream https://github.com/NousResearch/hermes-agent.git
+          git fetch upstream
+
+          # Save this workflow file before resetting to upstream/main
+          cp .github/workflows/sync-upstream.yml /tmp/sync-upstream.yml
+
+          # Reset main to exactly match upstream/main
+          git checkout -B main upstream/main
+
+          # Remove upstream CI workflows — mirror doesn't need to re-run them
+          rm -rf .github/workflows/
+
+          # Re-apply only this workflow so future scheduled runs keep working
+          mkdir -p .github/workflows
+          cp /tmp/sync-upstream.yml .github/workflows/sync-upstream.yml
+          git add -A
+          git commit -m "chore: keep sync-upstream workflow only"
+
+          # Force push: origin/main = upstream/main + workflow commit
+          git push origin main --force
